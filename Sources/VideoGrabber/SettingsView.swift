@@ -23,6 +23,13 @@ struct SettingsView: View {
                 Toggle("检测浏览器当前标签页（需自动化权限）", isOn: $manager.browserEnabled)
                 Toggle("检测到即自动下载（否则先提示）", isOn: $manager.autoDownload)
             }
+
+            Section("网络") {
+                TextField("代理地址（留空不使用）", text: $manager.proxy,
+                          prompt: Text("http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"))
+                Text("下载被限制/无法直连的站点（如部分海外新闻站）时，填上你本地代理的地址。")
+                    .font(.caption).foregroundColor(.secondary)
+            }
         }
         .formStyle(.grouped)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -104,10 +104,20 @@ final class YTDLPService {
         return nil
     }
 
+    /// 网络相关参数：可选代理 + 若干重试，提升被墙/不稳定站点的成功率。
+    static func networkArgs(proxy: String?) -> [String] {
+        var a: [String] = ["--retries", "5", "--fragment-retries", "10",
+                           "--extractor-retries", "3", "--socket-timeout", "20"]
+        if let p = proxy?.trimmingCharacters(in: .whitespacesAndNewlines), !p.isEmpty {
+            a += ["--proxy", p]
+        }
+        return a
+    }
+
     // MARK: - 探测视频信息
 
     /// 用 `yt-dlp -J` 探测。会阻塞，请在后台线程调用。
-    static func probe(url: String, ytdlpPath: String?) throws -> VideoInfo {
+    static func probe(url: String, ytdlpPath: String?, proxy: String?) throws -> VideoInfo {
         guard let bin = locate("yt-dlp", override: ytdlpPath) else {
             throw ServiceError.binaryNotFound
         }
@@ -116,7 +126,7 @@ final class YTDLPService {
         task.executableURL = URL(fileURLWithPath: bin)
         task.environment = augmentedEnvironment()
         // --flat-playlist：播放列表只取概要，避免展开成百上千条目卡住
-        task.arguments = ["-J", "--no-warnings", "--flat-playlist", url]
+        task.arguments = networkArgs(proxy: proxy) + ["-J", "--no-warnings", "--flat-playlist", url]
 
         let outPipe = Pipe()
         let errPipe = Pipe()
@@ -168,9 +178,11 @@ final class YTDLPService {
         url: String,
         quality: QualityPreference,
         outputDir: String,
-        ffmpegDir: String?
+        ffmpegDir: String?,
+        proxy: String?
     ) -> [String] {
         var args: [String] = ["--newline", "--no-warnings", "--restrict-filenames"]
+        args += networkArgs(proxy: proxy)
 
         // 输出模板：目录/标题.扩展名
         let template = (outputDir as NSString).appendingPathComponent("%(title)s [%(id)s].%(ext)s")
@@ -215,6 +227,7 @@ final class YTDLPService {
         ytdlpPath: String?,
         ffmpegDir: String?,
         outputDir: String,
+        proxy: String?,
         onProgress: @escaping (Double, String, String) -> Void,
         onMerging: @escaping () -> Void,
         onFinished: @escaping (String) -> Void,
@@ -235,7 +248,8 @@ final class YTDLPService {
             url: modelTask.url,
             quality: modelTask.quality,
             outputDir: outputDir,
-            ffmpegDir: ffmpegLocation
+            ffmpegDir: ffmpegLocation,
+            proxy: proxy
         )
 
         let outPipe = Pipe()
@@ -295,6 +309,11 @@ final class YTDLPService {
     /// 把 yt-dlp 的英文报错翻成看得懂、能操作的提示。
     static func friendlyError(_ raw: String, exitCode: Int32) -> String {
         let lower = raw.lowercased()
+        if lower.contains("ssl") || lower.contains("unexpected_eof")
+            || lower.contains("connection") || lower.contains("timed out")
+            || lower.contains("unable to download webpage") || lower.contains("network is unreachable") {
+            return "连不上该网站（连接被中断/超时）。这类站点在你的网络下可能被限制。请在「设置 → 网络」里填上你的代理（如 http://127.0.0.1:7890）后重试。"
+        }
         if lower.contains("unsupported url") {
             return "这个链接里没有可下载的视频（可能是首页、频道页或非视频页面）。请打开具体的视频页面，再复制那一页的地址。"
         }

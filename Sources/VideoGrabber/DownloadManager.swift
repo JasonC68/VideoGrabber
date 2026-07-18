@@ -45,6 +45,9 @@ final class DownloadManager: ObservableObject {
     @Published var autoDownload: Bool {   // 检测到即自动下载
         didSet { defaults.set(autoDownload, forKey: "autoDownload") }
     }
+    @Published var proxy: String {        // 代理地址，如 http://127.0.0.1:7890，留空不使用
+        didSet { defaults.set(proxy, forKey: "proxy") }
+    }
 
     // MARK: - 检测器
     private let clipboard = ClipboardMonitor()
@@ -63,6 +66,7 @@ final class DownloadManager: ObservableObject {
         clipboardEnabled = defaults.object(forKey: "clipboardEnabled") as? Bool ?? true
         browserEnabled = defaults.object(forKey: "browserEnabled") as? Bool ?? true
         autoDownload = defaults.object(forKey: "autoDownload") as? Bool ?? false
+        proxy = defaults.string(forKey: "proxy") ?? ""
 
         // 通知中心需要正规 app bundle；用 `swift run` 直接跑裸可执行文件时没有
         // bundleIdentifier，调用会崩溃，这里做保护。
@@ -120,8 +124,9 @@ final class DownloadManager: ObservableObject {
 
         // 后台探测标题，再开始下载
         let ytdlp = ytdlpPath.isEmpty ? nil : ytdlpPath
+        let px = proxy.isEmpty ? nil : proxy
         DispatchQueue.global(qos: .userInitiated).async {
-            let info = try? YTDLPService.probe(url: trimmed, ytdlpPath: ytdlp)
+            let info = try? YTDLPService.probe(url: trimmed, ytdlpPath: ytdlp, proxy: px)
             Task { @MainActor in
                 if let info { task.title = info.title }
                 self.performDownload(task)
@@ -133,6 +138,7 @@ final class DownloadManager: ObservableObject {
         let ytdlp = ytdlpPath.isEmpty ? nil : ytdlpPath
         let ffmpeg = ffmpegDir.isEmpty ? nil : ffmpegDir
         let dir = downloadDir
+        let px = proxy.isEmpty ? nil : proxy
 
         task.state = .downloading(progress: 0, speed: "", eta: "")
 
@@ -142,6 +148,7 @@ final class DownloadManager: ObservableObject {
                 ytdlpPath: ytdlp,
                 ffmpegDir: ffmpeg,
                 outputDir: dir,
+                proxy: px,
                 onProgress: { percent, speed, eta in
                     Task { @MainActor in
                         task.state = .downloading(progress: percent, speed: speed, eta: eta)
