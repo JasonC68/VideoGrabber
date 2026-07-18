@@ -25,10 +25,7 @@ struct SettingsView: View {
             }
 
             Section("网络") {
-                TextField("代理地址（留空不使用）", text: $manager.proxy,
-                          prompt: Text("http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"))
-                Text("下载被限制/无法直连的站点（如部分海外新闻站）时，填上你本地代理的地址。")
-                    .font(.caption).foregroundColor(.secondary)
+                TextField("Proxy", text: $manager.proxy)
             }
         }
         .formStyle(.grouped)
