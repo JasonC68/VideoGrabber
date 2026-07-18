@@ -10,8 +10,10 @@ struct VideoGrabberApp: App {
         Window("VideoGrabber", id: "main") {
             MainView()
                 .environmentObject(manager)
-                .frame(minWidth: 440, minHeight: 560)
+                .frame(minWidth: 460, minHeight: 640)
         }
+        .defaultSize(width: 540, height: 720)
+        .windowStyle(.hiddenTitleBar)   // 隐藏标题栏，内容延伸到顶部、交通灯浮在玻璃上
         .commands {
             // 用“设置…”替换默认的 App 菜单设置项，Cmd+, 打开
             CommandGroup(replacing: .appSettings) {

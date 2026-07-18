@@ -10,7 +10,6 @@ struct MainView: View {
     var body: some View {
         VStack(spacing: 0) {
             titleBar
-            Divider()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -32,7 +31,7 @@ struct MainView: View {
             footer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(AppBackground())
         .onAppear { env = manager.checkEnvironment() }
         .sheet(isPresented: $manager.showSettings) {
             settingsSheet
@@ -67,7 +66,8 @@ struct MainView: View {
             .frame(width: 130)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.top, 18)   // 给顶部交通灯让出空间（可按喜好在 18~30 之间微调）
+        .padding(.bottom, 12)
     }
 
     // MARK: - 粘贴栏
@@ -100,7 +100,7 @@ struct MainView: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(.thinMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .stroke(pasteFocused ? Color.accentColor : Color.gray.opacity(0.25),
@@ -115,7 +115,7 @@ struct MainView: View {
         VStack(alignment: .leading, spacing: 4) {
             Label("未检测到 yt-dlp", systemImage: "exclamationmark.triangle.fill")
                 .foregroundColor(.orange).font(.subheadline.bold())
-            Text("请在终端运行：brew install yt-dlp ffmpeg\n或到设置里手动指定 yt-dlp 路径。")
+            Text("正常打包的 App 已内置 yt-dlp；若你是从源码运行（swift run），请确保系统中装有 yt-dlp。")
                 .font(.caption).foregroundColor(.secondary)
             Button("重新检测") { env = manager.checkEnvironment() }
                 .buttonStyle(.link).font(.caption)
@@ -227,7 +227,7 @@ struct MainView: View {
             Divider()
             SettingsView().environmentObject(manager)
         }
-        .frame(width: 500, height: 560)
+        .frame(width: 480, height: 500)
     }
 
     // MARK: - 动作

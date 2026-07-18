@@ -10,7 +10,7 @@ final class YTDLPService {
         var errorDescription: String? {
             switch self {
             case .binaryNotFound:
-                return "未找到 yt-dlp。请先用 Homebrew 安装：brew install yt-dlp ffmpeg，或在设置里手动指定 yt-dlp 路径。"
+                return "未找到 yt-dlp。正常打包的 App 已内置；若从源码运行，请确保系统中装有 yt-dlp。"
             case .probeFailed(let m):
                 return "解析视频信息失败：\(m)"
             }
@@ -299,7 +299,7 @@ final class YTDLPService {
             return "这个链接里没有可下载的视频（可能是首页、频道页或非视频页面）。请打开具体的视频页面，再复制那一页的地址。"
         }
         if lower.contains("unable to extract") || lower.contains("no video formats") {
-            return "解析失败：可能该视频需要登录/会员、有地区限制，或站点近期改版。可尝试更新 yt-dlp（brew upgrade yt-dlp），或该内容暂不支持。"
+            return "解析失败：可能该视频需要登录/会员、有地区限制，或站点近期改版。可稍后重试，或等待 App 更新内置的 yt-dlp。"
         }
         if lower.contains("private") || lower.contains("members-only") || lower.contains("sign in") || lower.contains("login") {
             return "该视频需要登录或会员权限才能访问，当前版本尚未支持传入浏览器 Cookie。"
@@ -311,7 +311,7 @@ final class YTDLPService {
             return "该视频在当前地区不可用（地区限制）。"
         }
         if lower.contains("ffmpeg") {
-            return "需要 ffmpeg 才能完成合并/转码。请运行：brew install ffmpeg，或在设置里指定 ffmpeg 目录。"
+            return "需要 ffmpeg 才能完成合并/转码。正常打包的 App 已内置 ffmpeg；若从源码运行，请确保系统中装有 ffmpeg。"
         }
         if raw.isEmpty {
             return "下载失败（退出码 \(exitCode)）。"
