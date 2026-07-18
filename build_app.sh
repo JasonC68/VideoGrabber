@@ -4,8 +4,12 @@
 #   - 把 yt-dlp、ffmpeg 打进 App 内部（无需 Homebrew / Python）
 #   - ad-hoc 代码签名
 #
-# 用法：  ./build_app.sh              正常构建（首次会联网下载 yt-dlp/ffmpeg）
-#         ./build_app.sh --refresh   强制重新下载内置的 yt-dlp/ffmpeg
+# 内置二进制的来源（按优先级）：
+#   1) 你手动放到 vendor/bin/ 里的文件（推荐国内用户用，避免直连 GitHub 慢）
+#   2) 联网下载（自动尝试 GitHub 原站 + 国内加速镜像）
+#
+# 用法：  ./build_app.sh              正常构建
+#         ./build_app.sh --refresh   强制重新获取内置的 yt-dlp/ffmpeg
 #
 # 产物：  ./VideoGrabber.app
 set -euo pipefail
@@ -16,16 +20,15 @@ MIN_OS="13.0"
 REFRESH=0
 [[ "${1:-}" == "--refresh" ]] && REFRESH=1
 
-# 内置二进制缓存目录（放在项目里，避免每次都重新下载）
 VENDOR_DIR="vendor/bin"
 mkdir -p "$VENDOR_DIR"
 
-# ---------- 1. 下载并准备内置二进制 ----------
+# ---------- 1. 准备内置二进制（yt-dlp / ffmpeg）----------
 
-# 把下载内容规整成“可执行的 Mach-O 二进制”：识别 gzip / zip / 裸文件。
-# 用法：normalize_binary <下载得到的文件> <期望的可执行名，仅 zip 内查找用>
-# 成功则把结果原地留在 <文件> 路径并 chmod +x，返回 0；否则返回 1。
-normalize_binary() {
+is_macho() { file -b "$1" 2>/dev/null | grep -qi 'Mach-O'; }
+
+# 把下载/放置的文件规整成“可执行 Mach-O”：识别 gzip / zip / 裸文件。
+normalize_binary() { # <文件> <zip内可执行名>
   local f="$1" wantname="${2:-}"
   [[ -s "$f" ]] || return 1
   local kind; kind="$(file -b "$f" 2>/dev/null || true)"
@@ -36,62 +39,110 @@ normalize_binary() {
     unzip -o -q "$f" -d "$tmp" || return 1
     local found; found="$(find "$tmp" -type f -name "${wantname:-*}" ! -name '*.txt' | head -1)"
     [[ -z "$found" ]] && found="$(find "$tmp" -type f -perm -u+x | head -1)"
-    [[ -z "$found" ]] && return 1
+    [[ -z "$found" ]] && { rm -rf "$tmp"; return 1; }
     cp "$found" "$f"; rm -rf "$tmp"
   fi
-  file -b "$f" 2>/dev/null | grep -qi 'Mach-O' || return 1
+  is_macho "$f" || return 1
   chmod +x "$f"; return 0
 }
 
-# 依次尝试多个下载源，第一个得到有效 Mach-O 的就用它。
-# 用法：dl_first <目标路径> <zip内可执行名> <url1> <url2> ...
-dl_first() {
+# 给 GitHub 地址生成候选：原站 + 国内加速镜像
+mirror_urls() { # <url>
+  local u="$1"; echo "$u"
+  case "$u" in
+    https://github.com/*|https://raw.githubusercontent.com/*|https://objects.githubusercontent.com/*)
+      echo "https://ghfast.top/$u"
+      echo "https://ghproxy.net/$u"
+      echo "https://mirror.ghproxy.com/$u"
+      echo "https://gh-proxy.com/$u" ;;
+  esac
+}
+
+dl_first() { # <目标> <zip内名> <url...>
   local dest="$1" wantname="$2"; shift 2
-  local url
+  local url m
   for url in "$@"; do
-    echo "   尝试：$url"
-    if curl -fL --retry 2 --progress-bar -o "$dest.tmp" "$url" 2>/dev/null && \
-       normalize_binary "$dest.tmp" "$wantname"; then
-      mv "$dest.tmp" "$dest"; echo "   ✓ 成功"; return 0
+    while IFS= read -r m; do
+      [[ -z "$m" ]] && continue
+      echo "   尝试：$m"
+      if curl -fL --retry 2 --connect-timeout 15 --progress-bar -o "$dest.tmp" "$m" 2>/dev/null \
+         && normalize_binary "$dest.tmp" "$wantname"; then
+        mv "$dest.tmp" "$dest"; echo "   ✓ 成功"; return 0
+      fi
+      rm -f "$dest.tmp"
+    done < <(mirror_urls "$url")
+  done
+  return 1
+}
+
+# 把 vendor/bin 里“手动放置/别的命名”的文件规整成目标名
+ingest() { # <目标名> <候选文件名...>
+  local target="$1"; shift
+  [[ -s "$VENDOR_DIR/$target" ]] && is_macho "$VENDOR_DIR/$target" && return 0
+  local c
+  for c in "$@"; do
+    [[ -s "$VENDOR_DIR/$c" ]] || continue
+    cp "$VENDOR_DIR/$c" "$VENDOR_DIR/.ingest.tmp"
+    if normalize_binary "$VENDOR_DIR/.ingest.tmp" "$target"; then
+      mv "$VENDOR_DIR/.ingest.tmp" "$VENDOR_DIR/$target"
+      echo "   ✓ 采用手动放置的 $c → $target"; return 0
     fi
-    rm -f "$dest.tmp"
+    rm -f "$VENDOR_DIR/.ingest.tmp"
   done
   return 1
 }
 
 echo "==> 准备内置二进制（yt-dlp / ffmpeg）…"
 
-# yt-dlp（官方 macOS 独立版，自带 Python，通用二进制）
-if [[ "$REFRESH" == "1" || ! -s "$VENDOR_DIR/yt-dlp" ]]; then
-  dl_first "$VENDOR_DIR/yt-dlp" "yt-dlp" \
-    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" \
-    || echo "   ⚠️  yt-dlp 下载失败，请检查网络后重试（或 ./build_app.sh --refresh）。"
+# --- yt-dlp ---
+if [[ "$REFRESH" == "1" ]] || ! { [[ -s "$VENDOR_DIR/yt-dlp" ]] && is_macho "$VENDOR_DIR/yt-dlp"; }; then
+  ingest yt-dlp yt-dlp_macos yt-dlp_macos_legacy \
+    || dl_first "$VENDOR_DIR/yt-dlp" "yt-dlp" \
+         "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" \
+    || echo "   ⚠️  yt-dlp 未就绪（见下方手动放置指引）。"
 fi
 
-# ffmpeg：arm64 + x86_64 各取一份，lipo 合成通用；多源容错。
+# --- ffmpeg ---
 prepare_ffmpeg() {
-  [[ "$REFRESH" == "0" && -s "$VENDOR_DIR/ffmpeg" ]] && return 0
+  if [[ "$REFRESH" == "0" && -s "$VENDOR_DIR/ffmpeg" ]] && is_macho "$VENDOR_DIR/ffmpeg"; then return 0; fi
+  # 手动放置优先：单文件 ffmpeg，或 arm64/x64 分开两份
+  ingest ffmpeg ffmpeg ffmpeg-darwin-arm64 darwin-arm64 ffmpeg-darwin-x64 darwin-x64 && return 0
   local arm="$VENDOR_DIR/ffmpeg-arm64" x64="$VENDOR_DIR/ffmpeg-x64"
   local egw="https://github.com/eugeneware/ffmpeg-static/releases/latest/download"
-
-  dl_first "$arm" "ffmpeg" \
-    "$egw/ffmpeg-darwin-arm64" "$egw/darwin-arm64" || rm -f "$arm"
-  dl_first "$x64" "ffmpeg" \
-    "$egw/ffmpeg-darwin-x64" "$egw/darwin-x64" \
-    "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" || rm -f "$x64"
-
+  dl_first "$arm" "ffmpeg" "$egw/ffmpeg-darwin-arm64" "$egw/darwin-arm64" || rm -f "$arm"
+  dl_first "$x64" "ffmpeg" "$egw/ffmpeg-darwin-x64" "$egw/darwin-x64" \
+           "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" || rm -f "$x64"
   if [[ -s "$arm" && -s "$x64" ]]; then
     lipo -create "$arm" "$x64" -output "$VENDOR_DIR/ffmpeg" 2>/dev/null || cp "$arm" "$VENDOR_DIR/ffmpeg"
   elif [[ -s "$arm" ]]; then cp "$arm" "$VENDOR_DIR/ffmpeg"
   elif [[ -s "$x64" ]]; then cp "$x64" "$VENDOR_DIR/ffmpeg"
-  else
-    echo "   ⚠️  ffmpeg 全部下载源失败：高清合并暂不可用（仍可下带声音的单文件）。稍后可 ./build_app.sh --refresh 重试。"
-    return 0
-  fi
+  else echo "   ⚠️  ffmpeg 未就绪（高清合并暂不可用，仍可下带声音的单文件）。"; return 0; fi
   chmod +x "$VENDOR_DIR/ffmpeg"
-  echo "   ✓ ffmpeg 就绪：$(lipo -archs "$VENDOR_DIR/ffmpeg" 2>/dev/null || echo 单架构)"
+  echo "   ✓ ffmpeg：$(lipo -archs "$VENDOR_DIR/ffmpeg" 2>/dev/null || echo 单架构)"
 }
 prepare_ffmpeg
+
+# 缺依赖时打印手动放置指引，然后中止（避免构建出残缺的 App）
+YT_OK=0; [[ -s "$VENDOR_DIR/yt-dlp" ]] && is_macho "$VENDOR_DIR/yt-dlp" && YT_OK=1
+if [[ "$YT_OK" == "0" ]]; then
+  cat <<TIP
+
+────────────────────────────────────────────────────────────
+ 需要手动准备 yt-dlp（网络下载失败时最省事）：
+ 1) 用浏览器/下载工具下载这个文件（任选其一）：
+      原站  https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
+      加速  https://ghfast.top/https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
+ 2) 改名为 yt-dlp，放到：
+      $(pwd)/$VENDOR_DIR/yt-dlp
+ 3) （可选）ffmpeg 同理，Apple 芯片下载 arm64 版：
+      https://ghfast.top/https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-darwin-arm64
+      改名为 ffmpeg 放到 $(pwd)/$VENDOR_DIR/ffmpeg
+ 4) 重新运行 ./build_app.sh
+ 放好后脚本会自动识别，不再联网下载。
+────────────────────────────────────────────────────────────
+TIP
+  exit 1
+fi
 
 # ---------- 2. 编译通用二进制 ----------
 echo "==> 编译 release（arm64 + x86_64 通用）…"
@@ -110,7 +161,6 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources/bin"
 cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
 
-# 内置二进制放入 Resources/bin
 for b in yt-dlp ffmpeg; do
   if [[ -s "$VENDOR_DIR/$b" ]]; then
     cp "$VENDOR_DIR/$b" "$APP_DIR/Contents/Resources/bin/$b"
@@ -118,7 +168,6 @@ for b in yt-dlp ffmpeg; do
   fi
 done
 
-# 图标
 ICON_OK=0
 if [[ -d "Icon/AppIcon.iconset" ]] && command -v iconutil >/dev/null 2>&1; then
   iconutil -c icns "Icon/AppIcon.iconset" -o "$APP_DIR/Contents/Resources/AppIcon.icns" && ICON_OK=1
@@ -151,12 +200,10 @@ PLIST
 
 # ---------- 4. ad-hoc 代码签名 ----------
 echo "==> ad-hoc 签名…"
-# 先签内置二进制，再签整个 app（顺序不能反）
 for b in "$APP_DIR/Contents/Resources/bin/"*; do
   [[ -f "$b" ]] && codesign --force --sign - --timestamp=none "$b" 2>/dev/null || true
 done
 codesign --force --deep --sign - "$APP_DIR" 2>/dev/null || true
-# 去掉 quarantine，方便本机直接打开
 xattr -dr com.apple.quarantine "$APP_DIR" 2>/dev/null || true
 touch "$APP_DIR"
 

@@ -44,7 +44,7 @@ tell application "Finder"
     set current view of container window to icon view
     set toolbar visible of container window to false
     set statusbar visible of container window to false
-    set the bounds of container window to {300, 120, 940, 540}
+    set the bounds of container window to {300, 120, 940, 520}
     set opts to the icon view options of container window
     set arrangement of opts to not arranged
     set icon size of opts to 120

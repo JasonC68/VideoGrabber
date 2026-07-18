@@ -1,1 +1,14 @@
+# 构建产物
+.build/
+.swiftpm/
+DerivedData/
+*.app/
+*.dmg
+
+# 构建时下载/捆绑的第三方二进制（勿提交，体积大且含 GPL 二进制）
+vendor/
+
+# 杂项
 .DS_Store
+_to_delete/
+.vgsync.zip
