@@ -12,7 +12,7 @@
 
 ---
 
-## 一、构建自包含 App（开发者，一次）
+## 一、构建自包含 App
 
 需要 macOS 13+、Xcode（或 Command Line Tools）、能联网。
 
@@ -31,9 +31,9 @@ cd VideoGrabber
 ./make_dmg.sh         # 生成 VideoGrabber.dmg
 ```
 
-生成的 `VideoGrabber.dmg` 双击打开后是经典的安装窗口：把 VideoGrabber 图标拖到「应用程序」文件夹即可安装。把这个 `.dmg` 发给任何人，对方无需装任何依赖。
+生成的 `VideoGrabber.dmg` 双击打开后是经典的安装窗口：把 VideoGrabber 图标拖到「应用程序」文件夹即可安装。
 
-## 三、关于代码签名 / 门禁（重要）
+## 三、关于代码签名 / 门禁
 
 本项目用的是 **ad-hoc 签名**（无 Apple 开发者账号）。这意味着：
 
@@ -41,18 +41,18 @@ cd VideoGrabber
 - **发给别人 / 拷到别的 Mac**：首次打开会被 macOS 门禁拦一下（提示"无法验证开发者"）。让对方**右键点 App ▸ 打开 ▸ 再确认打开**，或在「系统设置 ▸ 隐私与安全性」里点"仍要打开"，之后就正常了。这是所有未公证 App 的通用现象，不是坏了。
 - **想做到对方双击零提示**：需要 99 美元/年的 Apple Developer 账号，用 Developer ID 证书签名并做 **公证(notarization)**。有账号后可在 `build_app.sh` 里把 `codesign --sign -` 换成你的证书，并加 `xcrun notarytool` 公证 + `xcrun stapler staple` 步骤。需要时我可以帮你补上。
 
-## 四、开发调试（可选）
+## 四、开发调试
 
 直接 `swift run` 可快速调试（此模式不走内置二进制、会退回系统 PATH 里的 yt-dlp/ffmpeg，且不发通知）。用 Xcode 打开文件夹（识别 `Package.swift`）也可以。
 
 启动后会打开主窗口，Dock 里会出现应用图标。设置在菜单栏「VideoGrabber ▸ 设置…」或按 `Cmd + ,` 打开，也可点窗口右下角的齿轮。关闭窗口即退出。
 
-## 三、授权
+## 五、授权
 
 - **自动化权限**：第一次开启「浏览器标签检测」时，macOS 会弹窗问是否允许 VideoGrabber 控制 Safari/Chrome，点允许。之后可在 系统设置 ▸ 隐私与安全性 ▸ 自动化 里管理。不授权也能用，只是少了“检测正在看的视频”这一路。
 - **通知权限**：下载完成时弹通知，可选。
 
-## 四、使用
+## 六、使用
 
 1. 打开应用主窗口。
 2. 右上角选清晰度（最佳 / 1080p / 720p / 480p / 仅音频 MP3）。
