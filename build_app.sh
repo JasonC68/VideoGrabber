@@ -102,23 +102,52 @@ if [[ "$REFRESH" == "1" ]] || ! { [[ -s "$VENDOR_DIR/yt-dlp" ]] && is_macho "$VE
     || echo "   ⚠️  yt-dlp 未就绪（见下方手动放置指引）。"
 fi
 
-# --- ffmpeg ---
+# --- ffmpeg（合成 arm64 + x86_64 通用，兼容 Intel Mac）---
+# 把一个候选文件规整为指定架构后放到 dest；成功返回 0。
+collect_arch() { # <dest> <arch: arm64|x86_64> <候选文件名...>
+  local dest="$1" want="$2"; shift 2
+  local c
+  for c in "$@"; do
+    [[ -s "$VENDOR_DIR/$c" ]] || continue
+    cp "$VENDOR_DIR/$c" "$dest.tmp"
+    if normalize_binary "$dest.tmp" ffmpeg \
+       && lipo -archs "$dest.tmp" 2>/dev/null | tr ' ' '\n' | grep -qx "$want"; then
+      mv "$dest.tmp" "$dest"; return 0
+    fi
+    rm -f "$dest.tmp"
+  done
+  return 1
+}
+
 prepare_ffmpeg() {
-  if [[ "$REFRESH" == "0" && -s "$VENDOR_DIR/ffmpeg" ]] && is_macho "$VENDOR_DIR/ffmpeg"; then return 0; fi
-  # 手动放置优先：单文件 ffmpeg，或 arm64/x64 分开两份
-  ingest ffmpeg ffmpeg ffmpeg-darwin-arm64 darwin-arm64 ffmpeg-darwin-x64 darwin-x64 && return 0
-  local arm="$VENDOR_DIR/ffmpeg-arm64" x64="$VENDOR_DIR/ffmpeg-x64"
   local egw="https://github.com/eugeneware/ffmpeg-static/releases/latest/download"
-  dl_first "$arm" "ffmpeg" "$egw/ffmpeg-darwin-arm64" "$egw/darwin-arm64" || rm -f "$arm"
-  dl_first "$x64" "ffmpeg" "$egw/ffmpeg-darwin-x64" "$egw/darwin-x64" \
-           "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" || rm -f "$x64"
-  if [[ -s "$arm" && -s "$x64" ]]; then
-    lipo -create "$arm" "$x64" -output "$VENDOR_DIR/ffmpeg" 2>/dev/null || cp "$arm" "$VENDOR_DIR/ffmpeg"
-  elif [[ -s "$arm" ]]; then cp "$arm" "$VENDOR_DIR/ffmpeg"
-  elif [[ -s "$x64" ]]; then cp "$x64" "$VENDOR_DIR/ffmpeg"
-  else echo "   ⚠️  ffmpeg 未就绪（高清合并暂不可用，仍可下带声音的单文件）。"; return 0; fi
-  chmod +x "$VENDOR_DIR/ffmpeg"
-  echo "   ✓ ffmpeg：$(lipo -archs "$VENDOR_DIR/ffmpeg" 2>/dev/null || echo 单架构)"
+  local A="$VENDOR_DIR/.ff-arm64" X="$VENDOR_DIR/.ff-x86_64"
+  rm -f "$A" "$X"
+
+  # 1) 本地已放置的架构（手动放置优先；也纳入已缓存的单架构 ffmpeg）
+  collect_arch "$A" arm64  ffmpeg-darwin-arm64 darwin-arm64 ffmpeg || true
+  collect_arch "$X" x86_64 ffmpeg-darwin-x64  darwin-x64  ffmpeg || true
+
+  # 2) 缺哪个架构就补下哪个（--refresh 则都重下）
+  if [[ "$REFRESH" == "1" || ! -s "$A" ]]; then
+    dl_first "$A" ffmpeg "$egw/ffmpeg-darwin-arm64" "$egw/darwin-arm64" || true
+  fi
+  if [[ "$REFRESH" == "1" || ! -s "$X" ]]; then
+    dl_first "$X" ffmpeg "$egw/ffmpeg-darwin-x64" "$egw/darwin-x64" \
+             "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" || true
+  fi
+
+  # 3) 合成通用二进制
+  if [[ -s "$A" && -s "$X" ]]; then
+    lipo -create "$A" "$X" -output "$VENDOR_DIR/ffmpeg" 2>/dev/null || cp "$A" "$VENDOR_DIR/ffmpeg"
+  elif [[ -s "$A" ]]; then cp "$A" "$VENDOR_DIR/ffmpeg"
+  elif [[ -s "$X" ]]; then cp "$X" "$VENDOR_DIR/ffmpeg"
+  else
+    rm -f "$A" "$X"
+    echo "   ⚠️  ffmpeg 未就绪（高清合并暂不可用，仍可下带声音的单文件）。"; return 0
+  fi
+  chmod +x "$VENDOR_DIR/ffmpeg"; rm -f "$A" "$X"
+  echo "   ✓ ffmpeg 架构：$(lipo -archs "$VENDOR_DIR/ffmpeg" 2>/dev/null || echo 单架构)"
 }
 prepare_ffmpeg
 
