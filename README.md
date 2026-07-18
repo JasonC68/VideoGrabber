@@ -1,113 +1,92 @@
-# VideoGrabber (macOS)
+# VideoGrabber
 
-一个桌面视频下载器（独立窗口应用，带 Dock 图标）。三种方式发现视频并下载：
+macOS 上的一个视频下载器，普通桌面窗口应用。底层是 yt-dlp 加 ffmpeg，YouTube、B 站、Twitter/X、TikTok、抖音、微博、小红书、微信公众号文章里的视频等一千多个网站都能下。
 
-1. **剪贴板检测** —— 复制任意视频页面链接，自动识别并提示下载。
-2. **浏览器标签检测** —— 读取 Safari / Chrome / Edge / Brave / Arc / Vivaldi 当前正在看的页面 URL。
-3. **手动粘贴** —— 菜单里直接粘贴链接下载。
+往下载队列里加视频有三种方式：复制视频页的链接会自动识别并弹提示；也能读浏览器（Safari、Chrome、Edge、Brave、Arc、Vivaldi）当前标签页在看的视频；再不然直接在输入框粘贴链接回车。
 
-底层用 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) + `ffmpeg`，支持 YouTube、Bilibili、Twitter/X、TikTok、抖音、微博、小红书、微信公众号文章视频等 1000+ 站点。
+yt-dlp 和 ffmpeg 都打包进了 App 里，用的人不用装 Homebrew、Python 或者别的什么，双击就能用。
 
-**自包含分发**：`yt-dlp` 和 `ffmpeg` 会被打进 App 内部，最终用户**无需安装 Homebrew、Python 或任何东西**，双击即用。
+## 构建
 
----
-
-## 一、构建自包含 App
-
-需要 macOS 13+、Xcode（或 Command Line Tools）、能联网。
+需要 macOS 13 以上、装了 Xcode 或 Command Line Tools，头一次构建得联网。
 
 ```bash
-cd VideoGrabber
-./build_app.sh        # 首次会联网下载 yt-dlp / ffmpeg 并打进 App
+./build_app.sh
 ```
 
-`build_app.sh` 做了三件事：把程序编译成 **arm64 + Intel 通用二进制**（任何 Mac 都能跑）；下载官方 `yt-dlp`（自带 Python 的独立版）和通用 `ffmpeg` 放进 `VideoGrabber.app/Contents/Resources/bin`；做 ad-hoc 代码签名。产物 `VideoGrabber.app` 就是自包含的，拷到别的 Mac 也能直接跑。
+脚本干三件事：把程序编译成 arm64 加 Intel 的通用二进制，两种芯片的 Mac 都能跑；下载 yt-dlp 和 ffmpeg 放进 `VideoGrabber.app/Contents/Resources/bin`；最后做一次 ad-hoc 签名。跑完得到的 `VideoGrabber.app` 是自包含的，拷到别的 Mac 上也能直接开。
 
-想更新内置的 yt-dlp / ffmpeg：`./build_app.sh --refresh`。
+想更新里面的 yt-dlp / ffmpeg，加 `--refresh` 再跑一次。
 
-## 二、打包成拖拽式安装器 .dmg
+国内直连 GitHub 下这两个依赖可能很慢甚至断。脚本里备了几个加速镜像；要是还下不动，就自己去 GitHub 下好丢进 `vendor/bin/`（文件名保持 `yt-dlp_macos`、`ffmpeg-darwin-arm64`、`ffmpeg-darwin-x64` 就行），再跑一次 `build_app.sh`，它会自己认出来，不再联网。想让打出来的包在 Intel Mac 上也能合并高清，记得把 `ffmpeg-darwin-x64` 也放进去。
+
+## 打包成安装器
 
 ```bash
-./make_dmg.sh         # 生成 VideoGrabber.dmg
+./make_dmg.sh
 ```
 
-生成的 `VideoGrabber.dmg` 双击打开后是经典的安装窗口：把 VideoGrabber 图标拖到「应用程序」文件夹即可安装。
+得到 `VideoGrabber.dmg`，双击打开就是常见那种安装窗口，把图标拖到「应用程序」就装好了。这个 dmg 发给谁都行，对方不用装任何东西。
 
-## 三、关于代码签名 / 门禁
+## 签名和门禁
 
-本项目用的是 **ad-hoc 签名**（无 Apple 开发者账号）。这意味着：
+现在用的是 ad-hoc 签名，没有 Apple 开发者账号，所以：
 
-- **在你自己这台构建机上**：`build_app.sh` 已清除 quarantine，直接双击就能开。
-- **发给别人 / 拷到别的 Mac**：首次打开会被 macOS 门禁拦一下（提示"无法验证开发者"）。让对方**右键点 App ▸ 打开 ▸ 再确认打开**，或在「系统设置 ▸ 隐私与安全性」里点"仍要打开"，之后就正常了。这是所有未公证 App 的通用现象，不是坏了。
-- **想做到对方双击零提示**：需要 99 美元/年的 Apple Developer 账号，用 Developer ID 证书签名并做 **公证(notarization)**。有账号后可在 `build_app.sh` 里把 `codesign --sign -` 换成你的证书，并加 `xcrun notarytool` 公证 + `xcrun stapler staple` 步骤。需要时我可以帮你补上。
+自己这台构建机上，`build_app.sh` 已经清掉了 quarantine，双击能直接开。
 
-## 四、开发调试
+发给别人、或者拷到另一台 Mac，第一次打开会被系统门禁拦一下，提示"无法验证开发者"。让对方右键点 App 选「打开」，再确认一次就行，之后就正常了。没做公证的 App 都这样，不是坏了。
 
-直接 `swift run` 可快速调试（此模式不走内置二进制、会退回系统 PATH 里的 yt-dlp/ffmpeg，且不发通知）。用 Xcode 打开文件夹（识别 `Package.swift`）也可以。
+想做到对方双击零提示，得有 Apple Developer 账号（一年 99 美元），用 Developer ID 证书签名再走一遍公证。有账号的话，把 `build_app.sh` 里的 `codesign --sign -` 换成自己的证书，再补上 `notarytool` 公证和 `stapler` 装订那几步就行。
 
-启动后会打开主窗口，Dock 里会出现应用图标。设置在菜单栏「VideoGrabber ▸ 设置…」或按 `Cmd + ,` 打开，也可点窗口右下角的齿轮。关闭窗口即退出。
+## 用法
 
-## 五、授权
+打开是主窗口，右上角选清晰度：最佳、1080p、720p、480p，或者只要音频的 MP3。
 
-- **自动化权限**：第一次开启「浏览器标签检测」时，macOS 会弹窗问是否允许 VideoGrabber 控制 Safari/Chrome，点允许。之后可在 系统设置 ▸ 隐私与安全性 ▸ 自动化 里管理。不授权也能用，只是少了“检测正在看的视频”这一路。
-- **通知权限**：下载完成时弹通知，可选。
+下载入口三选一：复制链接等它弹提示、浏览器打开视频页、或者直接粘贴链接回车。下的过程里能看到进度、速度和剩余时间，下完点文件夹图标能在访达里定位到文件。
 
-## 六、使用
+设置在菜单栏 VideoGrabber → 设置，或者按 Cmd+,，也可以点窗口右下角的齿轮。里面能改下载目录、开关那几种检测方式。
 
-1. 打开应用主窗口。
-2. 右上角选清晰度（最佳 / 1080p / 720p / 480p / 仅音频 MP3）。
-3. 三选一：复制链接等它弹提示 → 点「下载」；或浏览器打开视频页；或直接在输入框粘贴链接回车。
-4. 下载进度、速度、剩余时间实时显示；完成后点文件夹图标可在访达中定位。
-5. 设置里可改下载目录、是否“检测到即自动下载”等。
+浏览器标签检测头一次用会让你授权「自动化」权限（允许控制 Safari/Chrome），点允许。不给也能用，只是少了这一路。
 
----
+系统是 macOS 26 的话，窗口背景会用液态玻璃材质；更早的系统就是普通纯色窗口。
 
-## 已知限制（诚实说明）
+## 有些情况下不了
 
-- **DRM 加密内容下载不了**：Netflix、Disney+、爱奇艺/腾讯视频客户端等付费流媒体是加密流，技术上无法抓取，这是设计使然，不在能力范围。
-- **微信视频号（Channels）**：`yt-dlp` 对视频号支持有限、且经常因风控失效；公众号文章里的普通视频通常可下。抖音等平台偶尔需要更新 `yt-dlp` 或配置 cookies 才能下高清。
-- **需要登录/会员的视频**：可通过给 `yt-dlp` 传浏览器 cookies 解决（当前版本未内置该 UI，可后续加）。
-- **原生 App 里播放的视频**：本工具只检测浏览器标签，不检测原生播放器。
+DRM 加密的付费流媒体，Netflix、Disney+、爱奇艺和腾讯视频客户端这些，下不了。是加密流，抓不到也解不开，跟工具没关系。
 
-## 常见问题
+微信视频号支持得很不稳定，经常被风控挡掉；公众号文章里的普通视频一般能下。
 
-**下出来 mp4 没声音、webm 没画面?**
-正常构建的 App 已内置 ffmpeg，不会出现这问题。若你用 `swift run` 调试且系统没有 ffmpeg，会自动降级为“已带声音的单文件”(通常最高 720p)。要内置最新 ffmpeg，用 `./build_app.sh --refresh` 重新构建。
+需要登录或会员才能看的视频暂时下不了，得给 yt-dlp 传浏览器 cookie，这个还没做进界面。
 
-**发给别人打不开、提示"已损坏"或"无法验证开发者"?**
-这是未公证 App 的门禁提示，不是真的损坏。让对方右键 App ▸ 打开 ▸ 确认，或系统设置里"仍要打开"。彻底免提示需 Apple 公证（见上文第三节）。
+只有浏览器里播放的能检测到，原生客户端播放器里的检测不到。
 
-## 开源与许可
+## 许可
 
-本项目自身代码以 **MIT** 许可发布（见 `LICENSE`）。应用在构建/分发时会捆绑第三方程序 **yt-dlp**（Unlicense）与 **ffmpeg**（GPL），它们作为独立子进程被调用、且不随本仓库分发（`vendor/` 已在 `.gitignore` 中排除）。分发含 ffmpeg 的 `.dmg` 时的 GPL 合规要点见 `THIRD_PARTY_NOTICES.md`。
+代码是 MIT，见 `LICENSE`。App 里捆绑的 yt-dlp（Unlicense）和 ffmpeg（GPL）是当独立程序调用的，不进仓库（`vendor/` 已经在 `.gitignore` 里排掉了）。分发带 ffmpeg 的 dmg 时的 GPL 说明写在 `THIRD_PARTY_NOTICES.md`。
 
-## 合规提示
-
-请仅用于下载你拥有版权、已获授权、或平台允许的内容（如你自己的作品、公开授权素材、个人存档）。下载受版权保护的内容或违反平台服务条款可能带来法律风险，请自行判断与承担。
-
----
+只下你自己有版权、拿到授权、或者平台允许下载的东西。下有版权的内容、或者违反平台条款，后果自己担。
 
 ## 代码结构
 
 | 文件 | 作用 |
 |------|------|
-| `App.swift` | 应用入口，主窗口 + 设置命令 |
-| `AppDelegate.swift` | 启动检测器、关窗即退出 |
-| `build_app.sh` | 构建通用 + 内置依赖 + 签名 |
-| `make_dmg.sh` | 生成拖拽式 .dmg 安装器 |
-| `Models.swift` | 数据模型：视频信息、清晰度、下载任务与状态 |
-| `YTDLPService.swift` | 封装 yt-dlp/ffmpeg：定位、探测、下载、进度解析 |
-| `URLDetector.swift` | 从文本抽取链接、判断是否视频站点 |
-| `ClipboardMonitor.swift` | 剪贴板轮询检测 |
-| `BrowserWatcher.swift` | AppleScript 读取浏览器当前标签 URL |
-| `DownloadManager.swift` | 全局状态、设置持久化、下载队列调度 |
+| `App.swift` | 入口，主窗口和设置命令 |
+| `AppDelegate.swift` | 启动检测器，关窗即退出 |
 | `MainView.swift` | 主窗口界面 |
-| `DownloadRow.swift` | 单条下载任务的行视图 |
+| `DownloadRow.swift` | 单条下载任务的行 |
 | `SettingsView.swift` | 设置页 |
+| `GlassBackground.swift` | 按系统版本切换玻璃/纯色背景 |
+| `DownloadManager.swift` | 全局状态、设置持久化、下载队列 |
+| `YTDLPService.swift` | 调 yt-dlp/ffmpeg：定位、探测、下载、进度解析 |
+| `URLDetector.swift` | 从文本里抽链接、判断是不是视频页 |
+| `ClipboardMonitor.swift` | 剪贴板轮询 |
+| `BrowserWatcher.swift` | AppleScript 读浏览器当前标签 |
+| `Models.swift` | 数据模型 |
+| `build_app.sh` | 构建、内置依赖、签名 |
+| `make_dmg.sh` | 生成 dmg 安装器 |
 
-## 后续可加的功能
+## 还没做的
 
-- 传入浏览器 cookies 以下载会员/登录内容
-- 播放列表 / 多分P 批量下载与勾选
-- 内嵌下载缩略图预览、字幕下载
-- 打包成签名的 .app 便于分发（目前是开发者本地运行）
+- 传浏览器 cookie 下会员/登录内容
+- 播放列表、多分 P 批量下载
+- 缩略图预览、字幕下载
