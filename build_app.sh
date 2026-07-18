@@ -207,6 +207,11 @@ ICON_PLIST=""
 [[ "$ICON_OK" == "1" ]] && ICON_PLIST="    <key>CFBundleIconFile</key>            <string>AppIcon</string>
     <key>CFBundleIconName</key>            <string>AppIcon</string>"
 
+# 运行时按明暗模式切换 Dock 图标用的两张 PNG
+for p in AppIconLight AppIconDark; do
+  [[ -f "Resources/$p.png" ]] && cp "Resources/$p.png" "$APP_DIR/Contents/Resources/$p.png"
+done
+
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

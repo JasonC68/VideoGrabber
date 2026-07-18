@@ -20,8 +20,6 @@ echo "==> 准备安装器内容…"
 STAGING="$(mktemp -d)"
 cp -R "$APP_DIR" "$STAGING/"
 ln -s /Applications "$STAGING/Applications"
-mkdir "$STAGING/.background"
-[[ -f "Icon/dmg-background.png" ]] && cp "Icon/dmg-background.png" "$STAGING/.background/background.png"
 
 # 依据内容大小决定临时读写盘大小
 MB=$(( $(du -sm "$STAGING" | cut -f1) + 80 ))
@@ -36,7 +34,7 @@ echo "==> 挂载并布局窗口…"
 DEV="$(hdiutil attach -readwrite -noverify -noautoopen "$RW" | egrep '^/dev/' | sed 1q | awk '{print $1}')"
 sleep 1
 
-# 用 AppleScript 设置图标视图 / 背景 / 图标位置（失败也不影响可用性）
+# 默认外观：只摆好 App 图标和「应用程序」文件夹的位置，不用自定义背景。
 osascript <<EOF || true
 tell application "Finder"
   tell disk "$VOL"
@@ -44,15 +42,12 @@ tell application "Finder"
     set current view of container window to icon view
     set toolbar visible of container window to false
     set statusbar visible of container window to false
-    set the bounds of container window to {300, 120, 940, 520}
+    set the bounds of container window to {300, 120, 900, 480}
     set opts to the icon view options of container window
     set arrangement of opts to not arranged
     set icon size of opts to 120
-    try
-      set background picture of opts to file ".background:background.png"
-    end try
-    set position of item "$APP_NAME.app" of container window to {160, 235}
-    set position of item "Applications" of container window to {480, 235}
+    set position of item "$APP_NAME.app" of container window to {150, 190}
+    set position of item "Applications" of container window to {450, 190}
     update without registering applications
     delay 1
     close
